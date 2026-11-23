@@ -30,7 +30,7 @@ public final class ConfigPolicies {
                 bool(GeneralConfig.USE_COMPATIBILITY_RENDERER, false),
                 bool(GeneralConfig.USE_GPU_RENDERER, true),
                 bool(GeneralConfig.DISABLE_MODEL_GLOW_IN_SHADERPACK, true),
-                bool(GeneralConfig.ANIMATION_DISTANCE_LOD, false));
+                bool(GeneralConfig.ANIMATION_DISTANCE_LOD, false) || isLowMemoryHeap());
     }
 
     /** Face-cull escape hatch; default false keeps upstream bake semantics. */
@@ -56,12 +56,23 @@ public final class ConfigPolicies {
     }
 
     public static MemoryPolicy memory() {
-        return new MemoryPolicy(
-                integer(GeneralConfig.AUDIO_CACHE_MAX_BYTES, 64 * 1024 * 1024),
-                integer(GeneralConfig.MAX_CACHED_GPU_MODELS, 24),
-                bool(GeneralConfig.LAZY_MODEL_LOADING, true),
-                integer(GeneralConfig.MAX_RESIDENT_CPU_MODELS, 64),
-                integer(GeneralConfig.UNUSED_MODEL_TTL_SECONDS, 300));
+        int audioCache = integer(GeneralConfig.AUDIO_CACHE_MAX_BYTES, 64 * 1024 * 1024);
+        int gpuModels = integer(GeneralConfig.MAX_CACHED_GPU_MODELS, 24);
+        int cpuModels = integer(GeneralConfig.MAX_RESIDENT_CPU_MODELS, 64);
+        int ttlSeconds = integer(GeneralConfig.UNUSED_MODEL_TTL_SECONDS, 300);
+        if (isLowMemoryHeap()) {
+            // HP RAM kecil (mis. 2 GB): simpan lebih sedikit model/audio di memori dan lepas lebih cepat.
+            audioCache = Math.min(audioCache, 8 * 1024 * 1024);
+            gpuModels = gpuModels <= 0 ? 4 : Math.min(gpuModels, 4); // 0 = tak terbatas
+            cpuModels = Math.min(cpuModels, 6);
+            ttlSeconds = Math.min(ttlSeconds, 60);
+        }
+        return new MemoryPolicy(audioCache, gpuModels, bool(GeneralConfig.LAZY_MODEL_LOADING, true), cpuModels, ttlSeconds);
+    }
+
+    /** True bila heap maksimum JVM <= 1,5 GB (umum di HP 2 GB yang menjalankan Minecraft). */
+    public static boolean isLowMemoryHeap() {
+        return Runtime.getRuntime().maxMemory() <= 1536L * 1024L * 1024L;
     }
 
     public static DiagnosticsPolicy diagnostics() {
